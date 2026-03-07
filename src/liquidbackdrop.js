@@ -1,6 +1,6 @@
 /**
- * LiquidBackdrop Engine v0.4.0
- * Feature Update: Added Gyroscopic Shine with CSS Masking & Render Fixes.
+ * LiquidBackdrop Engine v0.5.0
+ * Render update: Single-pass chromatic aberration, SDF Magnification, Dynamic Border Radius.
  * 
  * @author AngryMark
  * @license MIT
@@ -17,6 +17,7 @@ export default class LiquidBackdrop {
 
     static CSS_PROP = '--liquid-backdrop';
     static ANGLE_PROP = '--lb-angle';
+    static OPACITY_PROP = '--lb-opacity';
 
     static motionActive = false;
     static targetBeta = 0;
@@ -27,12 +28,12 @@ export default class LiquidBackdrop {
     static start() {
         if (this.running) return;
         this.running = true;
-        console.log('💧 LiquidBackdrop v0.4.0 Started');
+        console.log('💧 LiquidBackdrop v0.5.0 (Endgame Liquid Glass) Started');
 
         if ('CSS' in window && 'registerProperty' in CSS) {
             try {
                 CSS.registerProperty({ name: this.CSS_PROP, syntax: '*', inherits: false, initialValue: '' });
-                CSS.registerProperty({ name: this.ANGLE_PROP, syntax: '<angle>', inherits: true, initialValue: '40deg' });
+                CSS.registerProperty({ name: this.ANGLE_PROP, syntax: '<angle>', inherits: true, initialValue: '165deg' });
             } catch (e) {}
         }
 
@@ -60,20 +61,22 @@ export default class LiquidBackdrop {
                 const rad = Math.atan2(this.currentGamma, this.currentBeta);
                 const deg = -(rad * (180 / Math.PI)) + 180;
                 document.documentElement.style.setProperty(this.ANGLE_PROP, `${deg}deg`);
+                
+                const op = 0.5 + (Math.min(mag, 50) / 50) * 0.4;
+                document.documentElement.style.setProperty(this.OPACITY_PROP, op.toFixed(2));
             }
             requestAnimationFrame(loop);
         };
 
         if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
             const req = () => {
-                DeviceOrientationEvent.requestPermission()
-                    .then(r => {
-                        if (r === 'granted') {
-                            window.addEventListener('deviceorientation', handler);
-                            this.motionActive = true;
-                            loop();
-                        }
-                    }).catch(console.error);
+                DeviceOrientationEvent.requestPermission().then(r => {
+                    if (r === 'granted') {
+                        window.addEventListener('deviceorientation', handler);
+                        this.motionActive = true;
+                        loop();
+                    }
+                }).catch(console.error);
                 document.body.removeEventListener('click', req);
             };
             document.body.addEventListener('click', req, { capture: true, once: true });
@@ -90,7 +93,10 @@ export default class LiquidBackdrop {
                 for (const entry of entries) {
                     const el = entry.target;
                     const st = this.elements.get(el);
-                    if (st && st.isVisible) this.#updateContainer(el, st.currentVal);
+                    if (st && st.isVisible) {
+                        const currentRadius = getComputedStyle(el).borderRadius;
+                        this.#updateContainer(el, st.currentVal, currentRadius);
+                    }
                 }
             });
         });
@@ -101,7 +107,9 @@ export default class LiquidBackdrop {
                 const st = this.elements.get(el);
                 if (st) {
                     st.isVisible = entry.isIntersecting;
-                    if (st.isVisible) this.#updateContainer(el, st.currentVal);
+                    if (st.isVisible) {
+                        this.#updateContainer(el, st.currentVal, st.cachedRadius);
+                    }
                 }
             });
         }, { rootMargin: '200px' });
@@ -125,18 +133,23 @@ export default class LiquidBackdrop {
 
     static #checkAndAttach(el) {
         if (el.classList.contains('lb-container') || el.tagName === 'svg') return;
-        const val = getComputedStyle(el).getPropertyValue(this.CSS_PROP).trim();
+        
+        const style = getComputedStyle(el);
+        const val = style.getPropertyValue(this.CSS_PROP).trim();
+        const currentRadius = style.borderRadius;
         const st = this.elements.get(el);
 
         if (val && val !== 'none') {
-            if (!st || st.currentVal !== val) {
-                if (!st) this.#initElement(el, val);
-                else this.#updateContainer(el, val);
+            if (!st || st.currentVal !== val || st.cachedRadius !== currentRadius) {
+                if (!st) this.#initElement(el, val, currentRadius);
+                else this.#updateContainer(el, val, currentRadius);
             }
-        } else if (st) this.#cleanupElement(el);
+        } else if (st) {
+            this.#cleanupElement(el);
+        }
     }
 
-    static #initElement(el, val) {
+    static #initElement(el, val, radius) {
         if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
 
         const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -148,17 +161,17 @@ export default class LiquidBackdrop {
 
         const shine = document.createElement('div');
         shine.className = 'lb-shine';
-        shine.style.cssText = "position: absolute; inset: 0; pointer-events: none; z-index: 2; border-radius: inherit; overflow: hidden;";
+        shine.style.cssText = "position: absolute; inset: 0; pointer-events: none; z-index: 2; border-radius: inherit; overflow: hidden; will-change: opacity, mask-image;";
 
         el.appendChild(svg);
         el.appendChild(container);
         el.appendChild(shine);
 
-        this.elements.set(el, { currentVal: val, svg, container, shine, isVisible: true });
+        this.elements.set(el, { currentVal: val, cachedRadius: radius, svg, container, shine, isVisible: true });
 
         this.resizeObserver.observe(el);
         this.intersectionObserver.observe(el);
-        this.#updateContainer(el, val);
+        this.#updateContainer(el, val, radius);
     }
 
     static #cleanupElement(el) {
@@ -170,40 +183,47 @@ export default class LiquidBackdrop {
         this.elements.delete(el);
     }
 
-    static #updateContainer(el, val) {
+    static #updateContainer(el, val, radius) {
         const st = this.elements.get(el);
         if (!st) return;
 
         st.currentVal = val;
+        st.cachedRadius = radius;
         const parsed = this.#parse(val);
         
         let svgHTML = '';
-        const filters = [];
+        const filters =[];
         
         st.shine.style.background = 'none';
         st.shine.style.boxShadow = 'none';
         st.shine.style.webkitMask = 'none';
+        st.shine.style.opacity = '1';
 
         parsed.forEach(item => {
             if (item.name === 'shine') {
-                const [intensity = 0.1, angle = 40, motion = 0, edgeOp = 0.1] = item.args;
+                const[intensity = 0.2, angle = 40, motion = 0] = item.args;
                 
                 if (motion === 1) this.#enableMotion();
-
-                if (edgeOp > 0) st.shine.style.boxShadow = `inset 0 0 0 1px rgba(255, 255, 255, ${edgeOp})`;
 
                 st.shine.style.webkitMask = `linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)`;
                 st.shine.style.webkitMaskComposite = 'xor';
                 st.shine.style.maskComposite = 'exclude';
                 st.shine.style.padding = '1px';
+                st.shine.style.boxShadow = `0 0 15px 1px rgba(255, 255, 255, 0.05) inset`;
 
-                const angStr = (motion === 1) ? `var(${this.ANGLE_PROP})` : `${angle}deg`;
+                const angleStr = (motion === 1) ? `var(${this.ANGLE_PROP})` : `${angle}deg`;
+                const gradMain = `linear-gradient(${angleStr}, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.25) 25%, rgba(255,255,255,0.05) 40%, rgba(255,255,255,0.0) 60%)`;
+                const gradSec = `linear-gradient(calc(${angleStr} + 180deg), rgba(255,255,255,0.35) 0%, rgba(255,255,255,0.1) 20%, rgba(255,255,255,0.0) 50%)`;
+
+                st.shine.style.background = `${gradMain}, ${gradSec}`;
                 
-                const g1 = `linear-gradient(${angStr}, transparent 40%, rgba(255,255,255,${intensity}) 50%, transparent 60%)`;
-                const g2 = `linear-gradient(calc(${angStr} + 180deg), transparent 30%, rgba(255,255,255,${intensity * 0.4}) 50%, transparent 70%)`;
-                
-                st.shine.style.background = `${g1}, ${g2}`;
-                st.shine.style.backgroundBlendMode = 'screen';
+                if (motion === 1) {
+                    st.shine.style.opacity = `calc(var(${this.OPACITY_PROP}, 0.5) * ${intensity})`;
+                    st.shine.style.transition = `${this.ANGLE_PROP} 0.3s linear, opacity 0.6s ease`;
+                } else {
+                    st.shine.style.opacity = intensity;
+                    st.shine.style.transition = 'none';
+                }
                 return;
             }
 
@@ -211,7 +231,7 @@ export default class LiquidBackdrop {
                 const fn = this.filters.get(item.name);
                 if (fn) {
                     const id = `lb-${item.name}-${Math.random().toString(36).substr(2, 6)}`;
-                    const content = fn(el, ...item.args);
+                    const content = fn(el, radius, ...item.args);
                     if (content) {
                         svgHTML += `<filter id="${id}" x="0%" y="0%" width="100%" height="100%" primitiveUnits="userSpaceOnUse" color-interpolation-filters="sRGB">${content}</filter>`;
                         filters.push(`url(#${id})`);
@@ -231,13 +251,13 @@ export default class LiquidBackdrop {
     }
 
     static #parse(str) {
-        const tokens = [];
+        const tokens =[];
         const re = /(\w+(?:-\w+)*)\s*\(([^)]*)\)/g;
         let m;
         while ((m = re.exec(str)) !== null) {
             const name = m[1];
             if (this.filters.has(name) || name === 'shine') {
-                const args = m[2] ? m[2].split(',').map(s => parseFloat(s.trim()) || s.trim()) : [];
+                const args = m[2] ? m[2].split(',').map(s => parseFloat(s.trim()) || s.trim()) :[];
                 tokens.push({ type: 'custom', name, args });
             } else {
                 tokens.push({ type: 'css', raw: m[0] });
@@ -246,133 +266,86 @@ export default class LiquidBackdrop {
         return tokens;
     }
 
+    static #parseRadius(radiusStr, w, h) {
+        let val = parseFloat(radiusStr) || 0;
+        if (radiusStr && radiusStr.includes('%')) {
+            val = (parseFloat(radiusStr) / 100) * Math.min(w, h);
+        }
+        return Math.min(val, w/2, h/2);
+    }
+
     static #registerCore() {
-        this.filters.set('liquid-glass', (element, refraction = 1, bevel = 10, chromatic = 0) => {
-            const width = Math.round(element.offsetWidth);
-            const height = Math.round(element.offsetHeight);
-            if (width < 1 || height < 1) return '';
+        this.filters.set('liquid-glass', (element, radiusStr, refVal = 25, bevVal = 15, chrVal = 0, magVal = 0) => {
+            const w = Math.round(element.offsetWidth), h = Math.round(element.offsetHeight);
+            if (w < 1 || h < 1) return '';
+            
+            const br = this.#parseRadius(radiusStr, w, h);
+            
+            const cvs = document.createElement('canvas');
+            cvs.width = w; cvs.height = h;
+            const ctx = cvs.getContext('2d'), d = ctx.createImageData(w, h).data;
+            const cx = w/2, cy = h/2, bx = cx-br, by = cy-br;
+            const limit = Math.max(1, bevVal), magS = Math.max(-1.5, Math.min(1.5, magVal)) * 0.75;
+            
+            const aaWidth = 1.0; 
 
-            const refVal = parseFloat(refraction) || 0;
-            const bevVal = Math.max(1, parseFloat(bevel) || 0);
-            const chrVal = parseFloat(chromatic) || 0;
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const idx = (y * w + x) * 4, nxG = (x-cx)/cx, nyG = (y-cy)/cy;
+                    
+                    let offX = -nxG * magS, offY = -nyG * magS;
+                    
+                    const px = x-cx, py = y-cy, dx = Math.abs(px)-bx, dy = Math.abs(py)-by;
+                    const qx = dx>0?dx:0, qy = dy>0?dy:0;
+                    
+                    const dSurf = (Math.sqrt(qx*qx + qy*qy) + Math.min(Math.max(dx, dy), 0)) - br;
 
-            const maxDim = Math.ceil(Math.max(width, height));
+                    let finalDispX = 127;
+                    let finalDispY = 127;
+                    let alpha = 0;
 
-            function drawRoundedPath(ctx, x, y, w, h, r) {
-                const radius = Math.min(r, Math.min(w / 2, h / 2));
-                ctx.beginPath();
-                ctx.moveTo(x + radius, y);
-                ctx.lineTo(x + w - radius, y);
-                ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
-                ctx.lineTo(x + w, y + h - radius);
-                ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
-                ctx.lineTo(x + radius, y + h);
-                ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
-                ctx.lineTo(x, y + radius);
-                ctx.quadraticCurveTo(x, y, x + radius, y);
-                ctx.closePath();
-            }
-            function circleMap(x) { return (x >= 1) ? 1 : (x <= 0) ? 0 : 1.0 - Math.sqrt(1.0 - x * x); }
-
-            function createMap() {
-                const canvas = document.createElement('canvas');
-                canvas.width = maxDim; canvas.height = maxDim;
-                const ctx = canvas.getContext('2d');
-                const d = ctx.createImageData(maxDim, maxDim);
-                const data = d.data;
-
-                const sx = Math.floor((maxDim - width) / 2);
-                const sy = Math.floor((maxDim - height) / 2);
-                const ex = sx + width;
-                const ey = sy + height;
-                const limit = bevVal;
-
-                const comp = getComputedStyle(element);
-                let br = parseFloat(comp.borderRadius) || 0;
-                if (comp.borderRadius.includes('%')) br = (parseFloat(comp.borderRadius)/100) * Math.min(width, height);
-
-                const cL = br, cR = width - br, cT = br, cB = height - br;
-
-                for (let y = 0; y < maxDim; y++) {
-                    for (let x = 0; x < maxDim; x++) {
-                        const idx = (y * maxDim + x) * 4;
-                        if (x < sx || x >= ex || y < sy || y >= ey) {
-                            data[idx]=127; data[idx+1]=0; data[idx+2]=127; data[idx+3]=255; continue;
-                        }
-
-                        const lx = x - sx, ly = y - sy;
-                        let dist = 0, nx = 0, ny = 0;
-                        let inCorner = false, cx = 0, cy = 0;
-
-                        if (br > 0) {
-                            if (lx < cL && ly < cT) { inCorner=true; cx=cL; cy=cT; } 
-                            else if (lx > cR && ly < cT) { inCorner=true; cx=cR; cy=cT; } 
-                            else if (lx < cL && ly > cB) { inCorner=true; cx=cL; cy=cB; } 
-                            else if (lx > cR && ly > cB) { inCorner=true; cx=cR; cy=cB; } 
-                        }
-
-                        if (inCorner) {
-                            const dx = lx - cx, dy = ly - cy;
-                            const len = Math.sqrt(dx*dx + dy*dy);
-                            dist = br - len; 
-                            if (dist < limit && dist >= 0) { nx = dx/len; ny = dy/len; } else dist = 10000;
+                    if (dSurf < aaWidth) {
+                        if (dSurf <= -aaWidth) {
+                            alpha = 255;
                         } else {
-                            const dL = lx, dR = width - 1 - lx, dT = ly, dB = height - 1 - ly;
-                            dist = Math.min(dL, dR, dT, dB);
-                            if (dist < limit) {
-                                if (dist === dL) nx = -1; else if (dist === dR) nx = 1;
-                                else if (dist === dT) ny = -1; else if (dist === dB) ny = 1;
-                            }
+                            const t = 1.0 - ((dSurf + aaWidth) / (2 * aaWidth));
+                            const val = t * t * (3 - 2 * t);
+                            alpha = Math.floor(val * 255);
                         }
 
-                        if (dist < limit) {
-                            const prog = 1 - (dist / limit);
-                            const int = circleMap(prog);
-                            data[idx] = Math.max(0, Math.min(255, 127 - (nx * int * 127)));     
-                            data[idx+2] = Math.max(0, Math.min(255, 127 - (ny * int * 127))); 
-                            data[idx+3] = 255; 
-                        } else {
-                            data[idx]=127; data[idx+1]=0; data[idx+2]=127; data[idx+3]=255;
+                        if (alpha > 0 && dSurf >= -limit) {
+                            const prog = 1 - (Math.abs(dSurf)/limit);
+                            const curve = (prog>=1) ? 1 : (prog<=0 ? 0 : 1 - Math.sqrt(1 - prog*prog));
+                            let nx=0, ny=0;
+                            if (px>bx && py>by) { nx=px-bx; ny=py-by; }
+                            else if (px<-bx && py>by) { nx=px+bx; ny=py-by; }
+                            else if (px>bx && py<-by) { nx=px-bx; ny=py+by; }
+                            else if (px<-bx && py<-by) { nx=px+bx; ny=py+by; }
+                            else { if (dx>dy) { nx=px>0?1:-1; } else { ny=py>0?1:-1; } }
+                            const len = Math.sqrt(nx*nx + ny*ny)||1;
+                            offX -= (nx/len)*curve; offY -= (ny/len)*curve;
                         }
+
+                        finalDispX = 127 + offX*127;
+                        finalDispY = 127 + offY*127;
                     }
+
+                    d[idx] = Math.max(0, Math.min(255, finalDispX));
+                    d[idx+1] = 0;
+                    d[idx+2] = Math.max(0, Math.min(255, finalDispY));
+                    d[idx+3] = alpha;
                 }
-                ctx.putImageData(d, 0, 0);
-                return canvas;
             }
+            ctx.putImageData(new ImageData(d, w, h), 0, 0);
 
-            function createFinalCanvas(source) {
-                const cvs = document.createElement('canvas');
-                cvs.width = width; cvs.height = height;
-                const ctx = cvs.getContext('2d');
-                ctx.fillStyle = "rgb(127, 0, 127)"; ctx.fillRect(0, 0, width, height);
-                const ox = (maxDim - width) / 2;
-                const oy = (maxDim - height) / 2;
-                ctx.drawImage(source, -Math.round(ox), -Math.round(oy));
-
-                const inset = bevVal;
-                const comp = getComputedStyle(element);
-                let br = parseFloat(comp.borderRadius) || 0;
-                if (comp.borderRadius.includes('%')) br = (parseFloat(comp.borderRadius)/100) * Math.min(width, height);
-
-                if (width > inset * 2 && height > inset * 2) {
-                    ctx.fillStyle = "rgb(127, 0, 127)";
-                    if (bevVal > 2) ctx.filter = `blur(${bevVal/3}px)`;
-                    drawRoundedPath(ctx, inset, inset, width - inset*2, height - inset*2, Math.max(0, br - inset/2));
-                    ctx.fill();
-                }
-                return cvs.toDataURL();
-            }
-
-            const map = createMap();
-            const url = createFinalCanvas(map);
-            const scale = refVal * 2;
-
+            const mapUrl = cvs.toDataURL(), scale = refVal * 2;
+            
             if (chrVal === 0) {
-                return `<feImage result="MAP" href="${url}" color-interpolation-filters="sRGB"/>
+                return `<feImage result="MAP" href="${mapUrl}" width="${w}" height="${h}" />
                         <feDisplacementMap in="SourceGraphic" in2="MAP" scale="${scale}" xChannelSelector="R" yChannelSelector="B"/>`;
             } else {
                 const rS = scale + (chrVal * 2), bS = Math.max(0, scale - (chrVal * 2));
-                return `<feImage result="MAP" href="${url}" color-interpolation-filters="sRGB"/>
+                return `<feImage result="MAP" href="${mapUrl}" width="${w}" height="${h}" />
                     <feDisplacementMap in="SourceGraphic" in2="MAP" scale="${rS}" xChannelSelector="R" yChannelSelector="B" result="RD"/>
                     <feComponentTransfer in="RD" result="RL"><feFuncR type="identity"/><feFuncG type="discrete" tableValues="0"/><feFuncB type="discrete" tableValues="0"/><feFuncA type="identity"/></feComponentTransfer>
                     <feDisplacementMap in="SourceGraphic" in2="MAP" scale="${scale}" xChannelSelector="R" yChannelSelector="B" result="GD"/>

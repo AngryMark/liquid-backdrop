@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LiquidBackdrop Playground</title>
+    <title>LiquidBackdrop v0.5.0 Beta</title>
     <style>
         body {
             margin: 0; background: #000; color: #fff;
@@ -21,26 +21,25 @@
         .draggable-box {
             position: fixed; 
             width: 180px; height: 180px;
-            top: 150px; left: calc(50% - 90px);
+            top: 50px; left: calc(50% - 90px);
             border-radius: 40px; 
-            z-index: 1000; 
+            z-index: 1000;
             cursor: grab;
-            display: flex; 
-            justify-content: 
-            center; align-items: center;
-            font-size: 1.2rem; 
-            font-weight: 700;
+            display: flex;
+            justify-content:
+            center;
+            align-items: center;
+            font-size: 1.2rem; font-weight: 700;
             text-shadow: 0 2px 10px rgba(0,0,0,0.5);
             box-shadow: 0 20px 40px rgba(0,0,0,0.4);
-            --liquid-backdrop: blur(5px) liquid-glass(50, 50, 5) shine(0.2, 50, 0);
-            
+            --liquid-backdrop: blur(3px) liquid-glass(50, 30, 5, 0) shine(0.35, 160, 0);
             user-select: none; touch-action: none;
             transition: transform 0.1s;
         }
         .draggable-box:active { cursor: grabbing; transform: scale(0.98); }
 
         .controls {
-            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
             width: 90%; max-width: 400px;
             background: rgba(0,0,0,0.6); 
             backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
@@ -55,7 +54,7 @@
         .row { margin-bottom: 12px; display: flex; gap: 15px; align-items: center; }
         .row label { width: 90px; opacity: 0.8; font-size: 0.85rem; }
         .row input[type=range] { flex: 1; accent-color: #fff; cursor: pointer; }
-        .row span { width: 30px; text-align: right; font-family: monospace; font-size: 0.8rem; opacity: 0.6; }
+        .row span { width: 35px; text-align: right; font-family: monospace; font-size: 0.8rem; opacity: 0.6; }
         
         .chk-row { margin-top: 15px; display: flex; justify-content: center; }
         .chk-row label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem; opacity: 0.9; }
@@ -69,11 +68,15 @@
     </div>
 
     <div class="controls">
-        <h1>LiquidBackdrop Playground</h1>
+        <h1>LiquidBackdrop v0.5.0 Beta</h1>
         
         <div class="row">
             <label>Blur</label>
-            <input type="range" id="blur" min="0" max="30" value="5"><span id="val-blur">5</span>
+            <input type="range" id="blur" min="0" max="30" value="3"><span id="val-blur">3</span>
+        </div>
+        <div class="row">
+            <label>Radius</label>
+            <input type="range" id="radius" min="0" max="90" value="40"><span id="val-radius">40</span>
         </div>
         <div class="row">
             <label>Refraction</label>
@@ -81,19 +84,23 @@
         </div>
         <div class="row">
             <label>Bevel</label>
-            <input type="range" id="bev" min="0" max="50" value="50"><span id="val-bev">50</span>
+            <input type="range" id="bev" min="1" max="50" value="30"><span id="val-bev">30</span>
         </div>
         <div class="row">
             <label>Chroma</label>
-            <input type="range" id="chr" min="0" max="10" step="5" value="1"><span id="val-chr">5</span>
+            <input type="range" id="chr" min="0" max="20" step="0.5" value="5"><span id="val-chr">5</span>
+        </div>
+        <div class="row">
+            <label>Magnify</label>
+            <input type="range" id="mag" min="-1" max="1" step="0.1" value="0"><span id="val-mag">0</span>
         </div>
         <div class="row">
             <label>Shine Op</label>
-            <input type="range" id="sop" min="0" max="1" step="0.05" value="0.2"><span id="val-sop">0.2</span>
+            <input type="range" id="sop" min="0" max="1" step="0.05" value="0.35"><span id="val-sop">0.35</span>
         </div>
         <div class="row">
             <label>Shine Ang</label>
-            <input type="range" id="sang" min="0" max="360" value="50"><span id="val-sang">50</span>
+            <input type="range" id="sang" min="0" max="360" value="160"><span id="val-sang">160</span>
         </div>
         
         <div class="chk-row">
@@ -109,17 +116,21 @@
         const box = document.getElementById('target');
         const inputs = {
             blur: document.getElementById('blur'),
+            radius: document.getElementById('radius'),
             ref: document.getElementById('ref'),
             bev: document.getElementById('bev'),
             chr: document.getElementById('chr'),
+            mag: document.getElementById('mag'),
             sop: document.getElementById('sop'),
             sang: document.getElementById('sang')
         };
         const values = {
             blur: document.getElementById('val-blur'),
+            radius: document.getElementById('val-radius'),
             ref: document.getElementById('val-ref'),
             bev: document.getElementById('val-bev'),
             chr: document.getElementById('val-chr'),
+            mag: document.getElementById('val-mag'),
             sop: document.getElementById('val-sop'),
             sang: document.getElementById('val-sang')
         };
@@ -128,8 +139,9 @@
         function update() {
             Object.keys(inputs).forEach(k => values[k].textContent = inputs[k].value);
             const motion = chkMotion.checked ? 1 : 0;
-            const val = `blur(${inputs.blur.value}px) liquid-glass(${inputs.ref.value}, ${inputs.bev.value}, ${inputs.chr.value}) shine(${inputs.sop.value}, ${inputs.sang.value}, ${motion})`;
-            
+            box.style.borderRadius = `${inputs.radius.value}px`;
+
+            const val = `blur(${inputs.blur.value}px) liquid-glass(${inputs.ref.value}, ${inputs.bev.value}, ${inputs.chr.value}, ${inputs.mag.value}) shine(${inputs.sop.value}, ${inputs.sang.value}, ${motion}) saturate(1.25)`;
             box.style.setProperty('--liquid-backdrop', val);
         }
 
