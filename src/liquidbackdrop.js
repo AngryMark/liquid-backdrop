@@ -1,6 +1,6 @@
 /**
- * LiquidBackdrop Engine v0.5.0
- * Render update: Single-pass chromatic aberration, SDF Magnification, Dynamic Border Radius.
+ * LiquidBackdrop Engine v0.5.2
+ * Render update: Hybrid Magnification & Spherical Lens.
  * 
  * @author AngryMark
  * @license MIT
@@ -28,7 +28,7 @@ export default class LiquidBackdrop {
     static start() {
         if (this.running) return;
         this.running = true;
-        console.log('💧 LiquidBackdrop v0.5.0 (Endgame Liquid Glass) Started');
+        console.log('💧 LiquidBackdrop v0.5.2 Started');
 
         if ('CSS' in window && 'registerProperty' in CSS) {
             try {
@@ -293,12 +293,19 @@ export default class LiquidBackdrop {
                 for (let x = 0; x < w; x++) {
                     const idx = (y * w + x) * 4, nxG = (x-cx)/cx, nyG = (y-cy)/cy;
                     
-                    let offX = -nxG * magS, offY = -nyG * magS;
-                    
                     const px = x-cx, py = y-cy, dx = Math.abs(px)-bx, dy = Math.abs(py)-by;
                     const qx = dx>0?dx:0, qy = dy>0?dy:0;
-                    
                     const dSurf = (Math.sqrt(qx*qx + qy*qy) + Math.min(Math.max(dx, dy), 0)) - br;
+
+                    let magMultiplier = 1.0;
+                    if (magS < 0) {
+                        let maxDepth = Math.min(cx, cy);
+                        let normDepth = dSurf < 0 ? Math.max(0, Math.min(1, -dSurf / maxDepth)) : 0;
+                        magMultiplier = Math.sin(normDepth * Math.PI / 2);
+                    }
+                    
+                    let offX = -nxG * magS * magMultiplier;
+                    let offY = -nyG * magS * magMultiplier;
 
                     let finalDispX = 127;
                     let finalDispY = 127;
