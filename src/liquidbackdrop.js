@@ -1,15 +1,30 @@
 /**
- * LiquidBackdrop Engine v0.5.2
- * Render update: Hybrid Magnification & Spherical Lens.
+ * LiquidBackdrop Engine v0.8.0
+ * Update: Render Modes, Core Improvements & Sandbox Overhaul 
  * 
  * @author AngryMark
  * @license MIT
  */
 
+const CORE_CSS = `
+:root { --lb-angle: 165deg; --lb-opacity: 0.5; }
+.lb-container { position: absolute; inset: 0; pointer-events: none; z-index: -1; overflow: hidden; border-radius: inherit; background: transparent; }
+.lb-shine { position: absolute; inset: 0; pointer-events: none; z-index: 2; border-radius: inherit; overflow: hidden; will-change: opacity, mask-image; opacity: 0; }
+.lb-debug { position: absolute; inset: 0; z-index: 10000; opacity: 0.8; pointer-events: none; border: 2px solid rgba(255, 0, 0, 0.5); background-size: 100% 100%; border-radius: inherit; }
+`;
+
 export default class LiquidBackdrop {
     static elements = new WeakMap();
+    static activeElements = new Set();
     static filters = new Map();
     static running = false;
+    
+    static config = {
+        fallback: false,
+        debug: false,
+        performance: false,
+        motion: false
+    };
     
     static resizeObserver = null;
     static mutationObserver = null;
@@ -28,7 +43,14 @@ export default class LiquidBackdrop {
     static start() {
         if (this.running) return;
         this.running = true;
-        console.log('💧 LiquidBackdrop v0.5.2 Started');
+        console.log('💧 LiquidBackdrop v0.8.0 Started');
+
+        if (!document.getElementById('liquid-backdrop-css')) {
+            const style = document.createElement('style');
+            style.id = 'liquid-backdrop-css';
+            style.textContent = CORE_CSS;
+            document.head.prepend(style);
+        }
 
         if ('CSS' in window && 'registerProperty' in CSS) {
             try {
@@ -42,6 +64,25 @@ export default class LiquidBackdrop {
         this.#scanInitialDOM();
     }
 
+    static setFallback(val) { this.config.fallback = !!val; this.#forceUpdateAll(); }
+    static setDebug(val) { this.config.debug = !!val; this.#forceUpdateAll(); }
+    static setPerformance(val) { this.config.performance = !!val; this.#forceUpdateAll(); }
+    static setMotion(val) { 
+        this.config.motion = !!val; 
+        if (val) this.#enableMotion(); 
+        this.#forceUpdateAll(); 
+    }
+
+    static #forceUpdateAll() {
+        this.activeElements.forEach(el => {
+            const st = this.elements.get(el);
+            if (st && st.isVisible) {
+                const currentRadius = getComputedStyle(el).borderRadius;
+                this.#updateContainer(el, st.currentVal, currentRadius);
+            }
+        });
+    }
+
     static #enableMotion() {
         if (this.motionActive) return;
         
@@ -52,7 +93,7 @@ export default class LiquidBackdrop {
         };
 
         const loop = () => {
-            const k = 0.08;
+            const k = 0.15;
             this.currentBeta += (this.targetBeta - this.currentBeta) * k;
             this.currentGamma += (this.targetGamma - this.currentGamma) * k;
 
@@ -119,12 +160,12 @@ export default class LiquidBackdrop {
                 if (m.type === 'childList') {
                     m.addedNodes.forEach(n => n.nodeType === 1 && this.#checkAndAttach(n));
                     m.removedNodes.forEach(n => n.nodeType === 1 && this.#cleanupElement(n));
-                } else if (m.type === 'attributes' && m.attributeName === 'style') {
+                } else if (m.type === 'attributes' && (m.attributeName === 'style' || m.attributeName === 'class')) {
                     this.#checkAndAttach(m.target);
                 }
             });
         });
-        this.mutationObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
+        this.mutationObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter:['style', 'class'] });
     }
 
     static #scanInitialDOM() {
@@ -132,7 +173,7 @@ export default class LiquidBackdrop {
     }
 
     static #checkAndAttach(el) {
-        if (el.classList.contains('lb-container') || el.tagName === 'svg') return;
+        if (el.classList.contains('lb-container') || el.classList.contains('lb-debug') || el.tagName === 'svg') return;
         
         const style = getComputedStyle(el);
         const val = style.getPropertyValue(this.CSS_PROP).trim();
@@ -157,17 +198,16 @@ export default class LiquidBackdrop {
         
         const container = document.createElement('div');
         container.className = 'lb-container';
-        container.style.cssText = "position: absolute; inset: 0; background: transparent; pointer-events: none; z-index: -1; overflow: hidden; border-radius: inherit;";
 
         const shine = document.createElement('div');
         shine.className = 'lb-shine';
-        shine.style.cssText = "position: absolute; inset: 0; pointer-events: none; z-index: 2; border-radius: inherit; overflow: hidden; will-change: opacity, mask-image;";
 
         el.appendChild(svg);
         el.appendChild(container);
         el.appendChild(shine);
 
         this.elements.set(el, { currentVal: val, cachedRadius: radius, svg, container, shine, isVisible: true });
+        this.activeElements.add(el);
 
         this.resizeObserver.observe(el);
         this.intersectionObserver.observe(el);
@@ -180,7 +220,19 @@ export default class LiquidBackdrop {
         this.resizeObserver.unobserve(el);
         this.intersectionObserver.unobserve(el);
         st.container.remove(); st.svg.remove(); st.shine.remove();
+        this.#handleDebug(el, null);
         this.elements.delete(el);
+        this.activeElements.delete(el);
+    }
+
+    static #handleDebug(el, mapUrl) {
+        let ov = el.querySelector('.lb-debug');
+        if (ov) ov.remove();
+        if (!mapUrl || !this.config.debug) return;
+        ov = document.createElement('div');
+        ov.className = 'lb-debug';
+        ov.style.backgroundImage = `url(${mapUrl})`;
+        el.appendChild(ov);
     }
 
     static #updateContainer(el, val, radius) {
@@ -193,6 +245,8 @@ export default class LiquidBackdrop {
         
         let svgHTML = '';
         const filters =[];
+        let hasBlur = false;
+        let debugMapUrl = null;
         
         st.shine.style.background = 'none';
         st.shine.style.boxShadow = 'none';
@@ -200,10 +254,13 @@ export default class LiquidBackdrop {
         st.shine.style.opacity = '1';
 
         parsed.forEach(item => {
+            if (item.name === 'blur') hasBlur = true;
+
             if (item.name === 'shine') {
-                const[intensity = 0.2, angle = 40, motion = 0] = item.args;
+                const[intensity = 0.2, angle = 40, motionOverride = 0] = item.args;
+                const motion = this.config.motion || motionOverride === 1;
                 
-                if (motion === 1) this.#enableMotion();
+                if (motion) this.#enableMotion();
 
                 st.shine.style.webkitMask = `linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)`;
                 st.shine.style.webkitMaskComposite = 'xor';
@@ -211,15 +268,15 @@ export default class LiquidBackdrop {
                 st.shine.style.padding = '1px';
                 st.shine.style.boxShadow = `0 0 15px 1px rgba(255, 255, 255, 0.05) inset`;
 
-                const angleStr = (motion === 1) ? `var(${this.ANGLE_PROP})` : `${angle}deg`;
+                const angleStr = motion ? `var(${this.ANGLE_PROP})` : (isNaN(angle) ? angle : `${angle}deg`);
                 const gradMain = `linear-gradient(${angleStr}, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.25) 25%, rgba(255,255,255,0.05) 40%, rgba(255,255,255,0.0) 60%)`;
                 const gradSec = `linear-gradient(calc(${angleStr} + 180deg), rgba(255,255,255,0.35) 0%, rgba(255,255,255,0.1) 20%, rgba(255,255,255,0.0) 50%)`;
 
                 st.shine.style.background = `${gradMain}, ${gradSec}`;
                 
-                if (motion === 1) {
+                if (motion) {
                     st.shine.style.opacity = `calc(var(${this.OPACITY_PROP}, 0.5) * ${intensity})`;
-                    st.shine.style.transition = `${this.ANGLE_PROP} 0.3s linear, opacity 0.6s ease`;
+                    st.shine.style.transition = `${this.ANGLE_PROP} 0.12s linear, opacity 0.2s ease`;
                 } else {
                     st.shine.style.opacity = intensity;
                     st.shine.style.transition = 'none';
@@ -228,19 +285,27 @@ export default class LiquidBackdrop {
             }
 
             if (item.type === 'custom') {
+                if (this.config.fallback) return;
                 const fn = this.filters.get(item.name);
                 if (fn) {
                     const id = `lb-${item.name}-${Math.random().toString(36).substr(2, 6)}`;
-                    const content = fn(el, radius, ...item.args);
-                    if (content) {
-                        svgHTML += `<filter id="${id}" x="0%" y="0%" width="100%" height="100%" primitiveUnits="userSpaceOnUse" color-interpolation-filters="sRGB">${content}</filter>`;
+                    const res = fn(el, radius, ...item.args);
+                    if (res) {
+                        svgHTML += `<filter id="${id}" x="0%" y="0%" width="100%" height="100%" primitiveUnits="userSpaceOnUse" color-interpolation-filters="sRGB">${res.filterStr}</filter>`;
                         filters.push(`url(#${id})`);
+                        if (res.mapUrl) debugMapUrl = res.mapUrl;
                     }
                 }
             } else {
                 filters.push(item.raw);
             }
         });
+
+        if (this.config.fallback && !hasBlur) {
+            filters.push('blur(4px)');
+        }
+
+        this.#handleDebug(el, debugMapUrl);
 
         st.svg.innerHTML = svgHTML;
         const finalFilter = filters.join(' ');
@@ -251,16 +316,16 @@ export default class LiquidBackdrop {
     }
 
     static #parse(str) {
-        const tokens =[];
+        const tokens = [];
         const re = /(\w+(?:-\w+)*)\s*\(([^)]*)\)/g;
         let m;
         while ((m = re.exec(str)) !== null) {
             const name = m[1];
             if (this.filters.has(name) || name === 'shine') {
                 const args = m[2] ? m[2].split(',').map(s => parseFloat(s.trim()) || s.trim()) :[];
-                tokens.push({ type: 'custom', name, args });
+                tokens.push({ type: 'custom', name, args, raw: m[0] });
             } else {
-                tokens.push({ type: 'css', raw: m[0] });
+                tokens.push({ type: 'css', name, raw: m[0] });
             }
         }
         return tokens;
@@ -276,26 +341,31 @@ export default class LiquidBackdrop {
 
     static #registerCore() {
         this.filters.set('liquid-glass', (element, radiusStr, refVal = 25, bevVal = 15, chrVal = 0, magVal = 0) => {
-            const w = Math.round(element.offsetWidth), h = Math.round(element.offsetHeight);
-            if (w < 1 || h < 1) return '';
+            const w = Math.round(element.offsetWidth);
+            const h = Math.round(element.offsetHeight);
+            if (w < 1 || h < 1) return null;
             
-            const br = this.#parseRadius(radiusStr, w, h);
+            const scaleFac = this.config.performance ? 0.70 : 1.0;
+            const cw = Math.max(1, Math.round(w * scaleFac));
+            const ch = Math.max(1, Math.round(h * scaleFac));
+            const cbr = this.#parseRadius(radiusStr, w, h) * scaleFac;
             
             const cvs = document.createElement('canvas');
-            cvs.width = w; cvs.height = h;
-            const ctx = cvs.getContext('2d'), d = ctx.createImageData(w, h).data;
-            const cx = w/2, cy = h/2, bx = cx-br, by = cy-br;
-            const limit = Math.max(1, bevVal), magS = Math.max(-1.5, Math.min(1.5, magVal)) * 0.75;
+            cvs.width = cw; cvs.height = ch;
+            const ctx = cvs.getContext('2d'), d = ctx.createImageData(cw, ch).data;
+            const cx = cw/2, cy = ch/2, bx = cx-cbr, by = cy-cbr;
+            const limit = Math.max(1, bevVal * scaleFac), magS = Math.max(-1.5, Math.min(1.5, magVal)) * 0.75;
             
             const aaWidth = 1.0; 
 
-            for (let y = 0; y < h; y++) {
-                for (let x = 0; x < w; x++) {
-                    const idx = (y * w + x) * 4, nxG = (x-cx)/cx, nyG = (y-cy)/cy;
+            for (let y = 0; y < ch; y++) {
+                for (let x = 0; x < cw; x++) {
+                    const idx = (y * cw + x) * 4, nxG = (x-cx)/cx, nyG = (y-cy)/cy;
                     
                     const px = x-cx, py = y-cy, dx = Math.abs(px)-bx, dy = Math.abs(py)-by;
                     const qx = dx>0?dx:0, qy = dy>0?dy:0;
-                    const dSurf = (Math.sqrt(qx*qx + qy*qy) + Math.min(Math.max(dx, dy), 0)) - br;
+                    
+                    const dSurf = (Math.sqrt(qx*qx + qy*qy) + Math.min(Math.max(dx, dy), 0)) - cbr;
 
                     let magMultiplier = 1.0;
                     if (magS < 0) {
@@ -343,16 +413,17 @@ export default class LiquidBackdrop {
                     d[idx+3] = alpha;
                 }
             }
-            ctx.putImageData(new ImageData(d, w, h), 0, 0);
+            ctx.putImageData(new ImageData(d, cw, ch), 0, 0);
 
             const mapUrl = cvs.toDataURL(), scale = refVal * 2;
+            let filterStr = '';
             
             if (chrVal === 0) {
-                return `<feImage result="MAP" href="${mapUrl}" width="${w}" height="${h}" />
+                filterStr = `<feImage result="MAP" href="${mapUrl}" width="${w}" height="${h}" preserveAspectRatio="none" />
                         <feDisplacementMap in="SourceGraphic" in2="MAP" scale="${scale}" xChannelSelector="R" yChannelSelector="B"/>`;
             } else {
                 const rS = scale + (chrVal * 2), bS = Math.max(0, scale - (chrVal * 2));
-                return `<feImage result="MAP" href="${mapUrl}" width="${w}" height="${h}" />
+                filterStr = `<feImage result="MAP" href="${mapUrl}" width="${w}" height="${h}" preserveAspectRatio="none" />
                     <feDisplacementMap in="SourceGraphic" in2="MAP" scale="${rS}" xChannelSelector="R" yChannelSelector="B" result="RD"/>
                     <feComponentTransfer in="RD" result="RL"><feFuncR type="identity"/><feFuncG type="discrete" tableValues="0"/><feFuncB type="discrete" tableValues="0"/><feFuncA type="identity"/></feComponentTransfer>
                     <feDisplacementMap in="SourceGraphic" in2="MAP" scale="${scale}" xChannelSelector="R" yChannelSelector="B" result="GD"/>
@@ -361,6 +432,8 @@ export default class LiquidBackdrop {
                     <feComponentTransfer in="BD" result="BL"><feFuncR type="discrete" tableValues="0"/><feFuncG type="discrete" tableValues="0"/><feFuncB type="identity"/><feFuncA type="identity"/></feComponentTransfer>
                     <feComposite in="RL" in2="GL" operator="arithmetic" k2="1" k3="1" result="RG"/><feComposite in="RG" in2="BL" operator="arithmetic" k2="1" k3="1"/>`;
             }
+
+            return { filterStr, mapUrl };
         });
     }
 }

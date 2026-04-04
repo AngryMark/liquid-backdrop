@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LiquidBackdrop v0.5.0 Beta</title>
+    <title>LiquidBackdrop v0.8.0 Beta</title>
     <style>
         body {
             margin: 0; background: #000; color: #fff;
@@ -14,7 +14,7 @@
 
         .background-layer {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: url('assets/bg.jpg') center/cover no-repeat;
+            background: url('./assets/bg.jpg') center/cover no-repeat;
             z-index: 0; pointer-events: none;
         }
 
@@ -23,40 +23,69 @@
             width: 180px; height: 180px;
             top: 50px; left: calc(50% - 90px);
             border-radius: 40px; 
-            z-index: 1000;
+            z-index: 3000;
             cursor: grab;
             display: flex;
-            justify-content:
-            center;
+            justify-content: center;
             align-items: center;
             font-size: 1.2rem; font-weight: 700;
             text-shadow: 0 2px 10px rgba(0,0,0,0.5);
             box-shadow: 0 20px 40px rgba(0,0,0,0.4);
-            --liquid-backdrop: blur(3px) liquid-glass(50, 30, 5, 0) shine(0.35, 160, 0);
             user-select: none; touch-action: none;
             transition: transform 0.1s;
         }
         .draggable-box:active { cursor: grabbing; transform: scale(0.98); }
+        
+        #box-label { pointer-events: none; }
 
         .controls {
             position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-            width: 90%; max-width: 400px;
+            width: 90%; max-width: 450px;
             background: rgba(0,0,0,0.6); 
             backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-            padding: 20px 25px; border-radius: 30px;
+            padding: 20px; border-radius: 30px;
             box-sizing: border-box;
             border: 1px solid rgba(255,255,255,0.1);
             z-index: 2000;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px 20px;
         }
         
-        h1 { margin: 0 0 15px 0; font-size: 1.1rem; text-align: center; opacity: 0.8; }
+        h1 { grid-column: 1 / -1; margin: 0 0 5px 0; font-size: 1.1rem; text-align: center; opacity: 0.8; }
         
-        .row { margin-bottom: 12px; display: flex; gap: 15px; align-items: center; }
-        .row label { width: 90px; opacity: 0.8; font-size: 0.85rem; }
-        .row input[type=range] { flex: 1; accent-color: #fff; cursor: pointer; }
-        .row span { width: 35px; text-align: right; font-family: monospace; font-size: 0.8rem; opacity: 0.6; }
+        .tools-row { grid-column: 1 / -1; display: flex; justify-content: space-around; font-size: 0.8rem; margin-bottom: 5px; opacity: 0.9; }
+        .tools-row label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
         
-        .chk-row { margin-top: 15px; display: flex; justify-content: center; }
+        .tpl-row { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-bottom: 5px; }
+        .tpl-row button { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 6px 12px; border-radius: 12px; cursor: pointer; font-size: 0.8rem; transition: background 0.2s; }
+        .tpl-row button:hover { background: rgba(255,255,255,0.2); }
+
+        .code-display {
+            grid-column: 1 / -1;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 12px;
+            padding: 10px 12px;
+            margin-bottom: 5px;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 0.75rem;
+            color: #fff;
+            text-align: center;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            user-select: all;
+        }
+        .code-display:hover { background: rgba(0, 0, 0, 0.7); }
+        
+        .row { display: flex; flex-direction: column; gap: 5px; }
+        .row-header { display: flex; justify-content: space-between; font-size: 0.8rem; opacity: 0.8; }
+        .row input[type=range] { width: 100%; accent-color: #fff; cursor: pointer; margin: 0; }
+        .row span { font-family: monospace; opacity: 0.6; }
+        
+        .chk-row { grid-column: 1 / -1; display: flex; justify-content: center; margin-top: 5px; }
         .chk-row label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem; opacity: 0.9; }
     </style>
 </head>
@@ -64,43 +93,59 @@
     <div class="background-layer"></div>
 
     <div class="draggable-box" id="target">
-        Drag Me
+        <span id="box-label">Custom</span>
     </div>
 
     <div class="controls">
-        <h1>LiquidBackdrop v0.5.0 Beta</h1>
+        <h1>LiquidBackdrop v0.8.0 Beta</h1>
+        
+        <div class="tools-row">
+            <label><input type="checkbox" id="fallback"> Fallback</label>
+            <label><input type="checkbox" id="debug"> Debug Map</label>
+            <label><input type="checkbox" id="perf"> Performance</label>
+        </div>
+
+        <div class="tpl-row">
+            <button data-tpl="Regular">Regular</button>
+            <button data-tpl="Clear">Clear</button>
+            <button data-tpl="Prominent">Prominent</button>
+            <button data-tpl="Interactive">Interactive</button>
+            <button data-tpl="Lense">Lense</button>
+        </div>
+
+        <div class="code-display" id="code-output" title="Select to copy">--liquid-backdrop: loading...;</div>
         
         <div class="row">
-            <label>Blur</label>
-            <input type="range" id="blur" min="0" max="30" value="3"><span id="val-blur">3</span>
+            <div class="row-header"><label>Blur</label><span id="val-blur">3</span></div>
+            <input type="range" id="blur" min="0" max="30" value="3">
         </div>
         <div class="row">
-            <label>Radius</label>
-            <input type="range" id="radius" min="0" max="90" value="40"><span id="val-radius">40</span>
+            <div class="row-header"><label>Radius</label><span id="val-radius">40</span></div>
+            <input type="range" id="radius" min="0" max="90" value="40">
         </div>
         <div class="row">
-            <label>Refraction</label>
-            <input type="range" id="ref" min="0" max="50" value="50"><span id="val-ref">50</span>
+            <div class="row-header"><label>Refraction</label><span id="val-ref">50</span></div>
+            <input type="range" id="ref" min="0" max="50" value="50">
         </div>
         <div class="row">
-            <label>Bevel</label>
-            <input type="range" id="bev" min="1" max="50" value="30"><span id="val-bev">30</span>
+            <div class="row-header"><label>Bevel</label><span id="val-bev">30</span></div>
+            <input type="range" id="bev" min="1" max="50" value="30">
         </div>
         <div class="row">
-            <label>Chroma</label>
-            <input type="range" id="chr" min="0" max="20" step="0.5" value="5"><span id="val-chr">5</span>
+            <div class="row-header"><label>Chroma</label><span id="val-chr">1</span></div>
+            <input type="range" id="chr" min="0" max="20" step="0.5" value="1">
         </div>
         <div class="row">
-            <label>Magnify</label>
-            <input type="range" id="mag" min="-1" max="1" step="0.1" value="0"><span id="val-mag">0</span>
+            <div class="row-header"><label>Magnify</label><span id="val-mag">0</span></div>
+            <input type="range" id="mag" min="-1" max="1" step="0.1" value="0">
         </div>
         <div class="row">
-            <label>Shine Op</label>
-            <input type="range" id="sop" min="0" max="1" step="0.05" value="0.35"><span id="val-sop">0.35</span>
+            <div class="row-header"><label>Shine Op</label><span id="val-sop">0.35</span></div>
+            <input type="range" id="sop" min="0" max="1" step="0.05" value="0.35">
         </div>
         <div class="row">
-            <label>Shine Ang</label>
-            <input type="range" id="sang" min="0" max="360" value="160"><span id="val-sang">160</span>
+            <div class="row-header"><label>Shine Ang</label><span id="val-sang">160</span></div>
+            <input type="range" id="sang" min="0" max="360" value="160">
         </div>
         
         <div class="chk-row">
@@ -114,6 +159,12 @@
         LiquidBackdrop.start();
 
         const box = document.getElementById('target');
+        const boxLabel = document.getElementById('box-label');
+        const codeOutput = document.getElementById('code-output');
+        const chkMotion = document.getElementById('motion');
+        
+        let currentSat = 1.25;
+        
         const inputs = {
             blur: document.getElementById('blur'),
             radius: document.getElementById('radius'),
@@ -134,24 +185,92 @@
             sop: document.getElementById('val-sop'),
             sang: document.getElementById('val-sang')
         };
-        const chkMotion = document.getElementById('motion');
 
-        function update() {
+        const presets = {
+            'Regular': { blur: 3, ref: 25, bev: 12, chr: 0, mag: 0, sop: 0.45, sang: 160, sat: 1.2, radius: 40, bg: 'rgba(255, 255, 255, 0.05)', motion: false },
+            'Clear': { blur: 1, ref: 45, bev: 20, chr: 2, mag: 0, sop: 0.35, sang: 90, sat: 1.4, radius: 40, bg: 'transparent', motion: false },
+            'Prominent': { blur: 5, ref: 15, bev: 8, chr: 0, mag: 0, sop: 0.35, sang: 45, sat: 1.1, radius: 40, bg: 'rgba(0, 122, 255, 0.15)', motion: false },
+            'Interactive': { blur: 5, ref: 30, bev: 15, chr: 1, mag: 0.45, sop: 0.45, sang: 160, sat: 1.3, radius: 40, bg: 'rgba(255, 255, 255, 0.02)', motion: true },
+            'Lense': { blur: 2, ref: 50, bev: 50, chr: 4, mag: -1, sop: 0.45, sang: 160, sat: 1.25, radius: 90, bg: 'transparent', motion: false }
+        };
+
+        document.getElementById('fallback').addEventListener('change', (e) => LiquidBackdrop.setFallback(e.target.checked));
+        document.getElementById('debug').addEventListener('change', (e) => LiquidBackdrop.setDebug(e.target.checked));
+        document.getElementById('perf').addEventListener('change', (e) => LiquidBackdrop.setPerformance(e.target.checked));
+
+        document.querySelectorAll('.tpl-row button').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const tplName = e.target.innerText;
+                const p = presets[tplName];
+                
+                if (p) {
+                    inputs.blur.value = p.blur;
+                    inputs.ref.value = p.ref;
+                    inputs.bev.value = p.bev;
+                    inputs.chr.value = p.chr;
+                    inputs.mag.value = p.mag;
+                    inputs.sop.value = p.sop;
+                    inputs.sang.value = p.sang;
+                    inputs.radius.value = p.radius;
+                    currentSat = p.sat;
+                    
+                    box.style.background = p.bg;
+                    
+                    if(p.motion !== chkMotion.checked) {
+                        chkMotion.checked = p.motion;
+                        LiquidBackdrop.setMotion(p.motion);
+                    }
+                    
+                    update(tplName);
+                }
+            });
+        });
+
+        function update(source) {
+            const isCustom = typeof source !== 'string';
+            const label = isCustom ? 'Custom' : source;
+
             Object.keys(inputs).forEach(k => values[k].textContent = inputs[k].value);
-            const motion = chkMotion.checked ? 1 : 0;
-            box.style.borderRadius = `${inputs.radius.value}px`;
-
-            const val = `blur(${inputs.blur.value}px) liquid-glass(${inputs.ref.value}, ${inputs.bev.value}, ${inputs.chr.value}, ${inputs.mag.value}) shine(${inputs.sop.value}, ${inputs.sang.value}, ${motion}) saturate(1.25)`;
+            
+            const radVal = inputs.radius.value;
+            box.style.borderRadius = radVal == 90 ? '100%' : `${radVal}px`;
+            
+            const motionVal = chkMotion.checked ? 1 : 0;
+            let angleStr = inputs.sang.value;
+            
+            if (label === 'Interactive') {
+                angleStr = 'var(--lb-angle)';
+            }
+            
+            const shineArgs = motionVal ? `${inputs.sop.value}, ${angleStr}, 1` : `${inputs.sop.value}, ${angleStr}`;
+            const val = `blur(${inputs.blur.value}px) liquid-glass(${inputs.ref.value}, ${inputs.bev.value}, ${inputs.chr.value}, ${inputs.mag.value}) shine(${shineArgs}) saturate(${currentSat})`;
+            
             box.style.setProperty('--liquid-backdrop', val);
+            
+            if (isCustom) {
+                boxLabel.innerText = 'Custom';
+                currentSat = 1.25;
+            } else {
+                boxLabel.innerText = label;
+            }
+            
+            codeOutput.innerText = `--liquid-backdrop: ${val};`;
         }
 
+        update('Custom');
+
         Object.values(inputs).forEach(el => el.addEventListener('input', update));
-        chkMotion.addEventListener('change', update);
+        
+        chkMotion.addEventListener('change', (e) => {
+            LiquidBackdrop.setMotion(e.target.checked);
+            if (boxLabel.innerText === 'Custom') update();
+            else update(boxLabel.innerText);
+        });
 
         let isDragging = false;
         let startPos = { x: 0, y: 0 };
         function onDown(e) {
-            if(e.target !== box) return;
+            if(e.target !== box && e.target.parentNode !== box) return;
             isDragging = true;
             const cx = e.touches ? e.touches[0].clientX : e.clientX;
             const cy = e.touches ? e.touches[0].clientY : e.clientY;
@@ -177,7 +296,6 @@
         window.addEventListener('touchstart', onDown, {passive: false});
         window.addEventListener('touchmove', onMove, {passive: false});
         window.addEventListener('touchend', onUp);
-
     </script>
 </body>
 </html>
