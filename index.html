@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LiquidBackdrop v0.8.0 Beta</title>
+    <title>LiquidBackdrop 1.0</title>
     <style>
         body {
             margin: 0; background: #000; color: #fff;
@@ -18,10 +18,47 @@
             z-index: 0; pointer-events: none;
         }
 
+        .main-header {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 5px; padding: 6px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 999px;
+            z-index: 5000;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            --liquid-backdrop: blur(5px) liquid-glass(50, 20, 1, 0) shine(0.25, 160) saturate(1.25) brightness(0.75);
+        }
+        .nav-btn {
+            display: flex; align-items: center; gap: 8px;
+            background: transparent; border: none; color: #fff;
+            padding: 10px 20px; border-radius: 999px;
+            font-size: 0.95rem; font-weight: 600; cursor: pointer;
+            transition: background 0.2s, opacity 0.2s; opacity: 0.6;
+        }
+        .nav-btn:hover { opacity: 1; }
+        .nav-btn.active { background: rgba(255, 255, 255, 0.15); opacity: 1; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
+        .nav-btn img { height: 22px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); }
+
+        .icon-btn {
+            display: flex; align-items: center; justify-content: center;
+            background: transparent; border: none; color: #fff;
+            padding: 10px; border-radius: 50%;
+            text-decoration: none; cursor: pointer;
+            transition: background 0.2s;
+        }
+        .icon-btn:hover { opacity: 1; background: rgba(255, 255, 255, 0.15); }
+        .icon-btn svg { width: 22px; height: 22px; fill: #fff; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); }
+
+        .view-container {
+            position: absolute; inset: 0; width: 100%; height: 100%;
+            display: none;
+        }
+        .view-container.active { display: block; }
+
         .draggable-box {
             position: fixed; 
-            width: 180px; height: 180px;
-            top: 50px; left: calc(50% - 90px);
+            width: 170px; height: 170px;
+            top: 100px; left: calc(50% - 90px);
             border-radius: 40px; 
             z-index: 3000;
             cursor: grab;
@@ -32,139 +69,274 @@
             text-shadow: 0 2px 10px rgba(0,0,0,0.5);
             box-shadow: 0 20px 40px rgba(0,0,0,0.4);
             user-select: none; touch-action: none;
-            transition: transform 0.1s;
+            transform: translateZ(0); 
+            backface-visibility: hidden;
         }
-        .draggable-box:active { cursor: grabbing; transform: scale(0.98); }
+        .draggable-box:active { cursor: grabbing; }
         
-        #box-label { pointer-events: none; }
+        #box-label {
+            pointer-events: none;
+            display: inline-block;
+            transition: opacity 0.5s ease;
+        }
+        #box-label.fade-out {
+            opacity: 0;
+        }
+        #box-label.fast-fade {
+            transition: opacity 0.1s ease;
+        }
+        #box-label.hint-anim {
+            animation: drag-oval 1.5s linear infinite;
+            font-size: 2.5rem;
+            text-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+        
+        @keyframes drag-oval {
+            0%   { transform: translate(24px, 0px) rotate(5deg); }
+            12.5%{ transform: translate(17px, 6px) rotate(2.5deg); }
+            25%  { transform: translate(0px, 8px) rotate(0deg); }
+            37.5%{ transform: translate(-17px, 6px) rotate(-2.5deg); }
+            50%  { transform: translate(-24px, 0px) rotate(-5deg); }
+            62.5%{ transform: translate(-17px, -6px) rotate(-2.5deg); }
+            75%  { transform: translate(0px, -8px) rotate(0deg); }
+            87.5%{ transform: translate(17px, -6px) rotate(2.5deg); }
+            100% { transform: translate(24px, 0px) rotate(5deg); }
+        }
 
         .controls {
             position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-            width: 90%; max-width: 450px;
+            width: 90%; max-width: 450px; max-height: calc(100vh - 300px);
+            overflow-y: auto; overflow-x: hidden;
             background: rgba(0,0,0,0.6); 
             backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
             padding: 20px; border-radius: 30px;
-            box-sizing: border-box;
-            border: 1px solid rgba(255,255,255,0.1);
-            z-index: 2000;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px 20px;
+            box-sizing: border-box; border: 1px solid rgba(255,255,255,0.1);
+            z-index: 2000; display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px;
         }
-        
+        .controls::-webkit-scrollbar { width: 6px; }
+        .controls::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 10px; }
         h1 { grid-column: 1 / -1; margin: 0 0 5px 0; font-size: 1.1rem; text-align: center; opacity: 0.8; }
-        
         .tools-row { grid-column: 1 / -1; display: flex; justify-content: space-around; font-size: 0.8rem; margin-bottom: 5px; opacity: 0.9; }
         .tools-row label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
-        
         .tpl-row { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-bottom: 5px; }
         .tpl-row button { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 6px 12px; border-radius: 12px; cursor: pointer; font-size: 0.8rem; transition: background 0.2s; }
         .tpl-row button:hover { background: rgba(255,255,255,0.2); }
-
-        .code-display {
-            grid-column: 1 / -1;
-            background: rgba(0, 0, 0, 0.5);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-radius: 12px;
-            padding: 10px 12px;
-            margin-bottom: 5px;
-            cursor: pointer;
-            transition: background 0.2s;
-            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-            font-size: 0.75rem;
-            color: #fff;
-            text-align: center;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            user-select: all;
-        }
+        .code-display { grid-column: 1 / -1; background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 12px; padding: 10px 12px; margin-bottom: 5px; cursor: pointer; transition: background 0.2s; font-family: monospace; font-size: 0.75rem; text-align: center; white-space: pre-wrap; word-wrap: break-word; user-select: all; }
         .code-display:hover { background: rgba(0, 0, 0, 0.7); }
-        
         .row { display: flex; flex-direction: column; gap: 5px; }
         .row-header { display: flex; justify-content: space-between; font-size: 0.8rem; opacity: 0.8; }
         .row input[type=range] { width: 100%; accent-color: #fff; cursor: pointer; margin: 0; }
         .row span { font-family: monospace; opacity: 0.6; }
-        
         .chk-row { grid-column: 1 / -1; display: flex; justify-content: center; margin-top: 5px; }
         .chk-row label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem; opacity: 0.9; }
+
+        #view-components { display: none; padding-top: 100px; padding-bottom: 50px; overflow-y: auto; }
+        #view-components.active { display: flex; flex-direction: column; align-items: center; }
+        
+        .components-panel {
+            width: 90%; max-width: 450px;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            padding: 20px;
+            border-radius: 30px;
+            box-sizing: border-box;
+            border: 1px solid rgba(255,255,255,0.1);
+            display: flex; flex-direction: column; gap: 25px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        }
+        .comp-header { text-align: center; margin-bottom: 5px; }
+        .comp-header h2 { margin: 0 0 15px 0; font-size: 1.1rem; opacity: 0.9; }
+        .comp-header p { margin: 0; opacity: 0.6; font-size: 0.85rem; }
+        
+        .component-block {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            padding: 20px;
+            display: flex; flex-direction: column; gap: 15px;
+        }
+        .component-block-header h3 { margin: 0 0 5px 0; font-size: 1.1rem; opacity: 0.9; }
+        .component-block-header p { margin: 0; font-size: 0.85rem; opacity: 0.6; line-height: 1.4; }
+        
+        .comp-variant {
+            display: flex; justify-content: space-between; align-items: center; gap: 15px;
+            padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.05);
+        }
+        .comp-info { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; }
+        .comp-title { font-weight: 600; font-size: 0.9rem; opacity: 0.9; }
+        .comp-code { 
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; 
+            font-size: 0.75rem; opacity: 0.7; 
+            background: rgba(0,0,0,0.3); padding: 8px 10px; 
+            border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); 
+            white-space: pre-wrap; word-break: break-all; 
+        }
+
+        .coming-soon-block {
+            text-align: center;
+            padding: 25px 20px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px dashed rgba(255, 255, 255, 0.15);
+            border-radius: 20px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 0.95rem;
+        }
     </style>
 </head>
 <body>
     <div class="background-layer"></div>
 
-    <div class="draggable-box" id="target">
-        <span id="box-label">Custom</span>
+    <header class="main-header">
+        <button class="nav-btn active" data-target="view-main">
+            <img src="assets/logo.png" alt="" onerror="this.style.display='none'"> LiquidBackdrop
+        </button>
+        <button class="nav-btn" data-target="view-components">Components</button>
+        <a href="https://github.com/AngryMark/liquid-backdrop/" target="_blank" class="icon-btn" title="GitHub">
+            <svg viewBox="0 0 24 24">
+                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+            </svg>
+        </a>
+    </header>
+
+    <div id="view-main" class="view-container active">
+        <div class="draggable-box" id="target">
+            <span id="box-label">Custom</span>
+        </div>
+
+        <div class="controls">
+            <h1>LiquidBackdrop 1.0 Sandbox</h1>
+            
+            <div class="tools-row">
+                <label><input type="checkbox" id="fallback"> Fallback</label>
+                <label><input type="checkbox" id="debug"> Debug Map</label>
+                <label><input type="checkbox" id="perf"> Performance</label>
+            </div>
+
+            <div class="tpl-row">
+                <button data-tpl="Regular">Regular</button>
+                <button data-tpl="Clear">Clear</button>
+                <button data-tpl="Prominent">Prominent</button>
+                <button data-tpl="Interactive">Interactive</button>
+                <button data-tpl="Lense">Lense</button>
+            </div>
+
+            <div class="code-display" id="code-output" title="Select to copy">--liquid-backdrop: loading...;</div>
+            
+            <div class="row">
+                <div class="row-header"><label>Blur</label><span id="val-blur">3</span></div>
+                <input type="range" id="blur" min="0" max="30" value="3">
+            </div>
+            <div class="row">
+                <div class="row-header"><label>Radius</label><span id="val-radius">40</span></div>
+                <input type="range" id="radius" min="0" max="90" value="40">
+            </div>
+            <div class="row">
+                <div class="row-header"><label>Refraction</label><span id="val-ref">50</span></div>
+                <input type="range" id="ref" min="0" max="50" value="50">
+            </div>
+            <div class="row">
+                <div class="row-header"><label>Bevel</label><span id="val-bev">30</span></div>
+                <input type="range" id="bev" min="1" max="50" value="30">
+            </div>
+            <div class="row">
+                <div class="row-header"><label>Chroma</label><span id="val-chr">1</span></div>
+                <input type="range" id="chr" min="0" max="20" step="0.5" value="1">
+            </div>
+            <div class="row">
+                <div class="row-header"><label>Magnify</label><span id="val-mag">0</span></div>
+                <input type="range" id="mag" min="-1" max="1" step="0.1" value="0">
+            </div>
+            <div class="row">
+                <div class="row-header"><label>Shine Op</label><span id="val-sop">0.35</span></div>
+                <input type="range" id="sop" min="0" max="1" step="0.05" value="0.35">
+            </div>
+            <div class="row">
+                <div class="row-header"><label>Shine Ang</label><span id="val-sang">160</span></div>
+                <input type="range" id="sang" min="0" max="360" value="160">
+            </div>
+            
+            <div class="chk-row">
+                <label><input type="checkbox" id="motion"> Enable Gyroscope</label>
+            </div>
+        </div>
     </div>
 
-    <div class="controls">
-        <h1>LiquidBackdrop v0.8.0 Beta</h1>
-        
-        <div class="tools-row">
-            <label><input type="checkbox" id="fallback"> Fallback</label>
-            <label><input type="checkbox" id="debug"> Debug Map</label>
-            <label><input type="checkbox" id="perf"> Performance</label>
-        </div>
+    <div id="view-components" class="view-container">
+        <div class="components-panel">
+            <div class="comp-header">
+                <h2>LiquidBackdrop Components</h2>
+                <p>Native Web Components created with LiquidBackdrop effect.</p>
+            </div>
+            
+            <div class="component-block">
+                <div class="component-block-header">
+                    <h3>LiquidToggle</h3>
+                </div>
+                
+                <div class="comp-variant">
+                    <div class="comp-info">
+                        <span class="comp-title">Default</span>
+                        <span class="comp-code">&lt;liquid-toggle active&gt;&lt;/liquid-toggle&gt;</span>
+                    </div>
+                    <liquid-toggle active></liquid-toggle>
+                </div>
+                
+                <div class="comp-variant">
+                    <div class="comp-info">
+                        <span class="comp-title">Scaled</span>
+                        <span class="comp-code">&lt;liquid-toggle style="transform: scale(0.7);"&gt;</span>
+                    </div>
+                    <liquid-toggle style="transform: scale(0.7); transform-origin: right center;"></liquid-toggle>
+                </div>
 
-        <div class="tpl-row">
-            <button data-tpl="Regular">Regular</button>
-            <button data-tpl="Clear">Clear</button>
-            <button data-tpl="Prominent">Prominent</button>
-            <button data-tpl="Interactive">Interactive</button>
-            <button data-tpl="Lense">Lense</button>
-        </div>
+                <div class="comp-variant">
+                    <div class="comp-info">
+                        <span class="comp-title">Custom</span>
+                        <span class="comp-code">&lt;liquid-toggle color-on="#486ae1" color-off="#333333" style="width: 60px; height: 25px;"&gt;</span>
+                    </div>
+                    <liquid-toggle active color-on="#486ae1" color-off="#333333" style="width: 60px; height: 25px;"></liquid-toggle>
+                </div>
+            </div>
 
-        <div class="code-display" id="code-output" title="Select to copy">--liquid-backdrop: loading...;</div>
-        
-        <div class="row">
-            <div class="row-header"><label>Blur</label><span id="val-blur">3</span></div>
-            <input type="range" id="blur" min="0" max="30" value="3">
-        </div>
-        <div class="row">
-            <div class="row-header"><label>Radius</label><span id="val-radius">40</span></div>
-            <input type="range" id="radius" min="0" max="90" value="40">
-        </div>
-        <div class="row">
-            <div class="row-header"><label>Refraction</label><span id="val-ref">50</span></div>
-            <input type="range" id="ref" min="0" max="50" value="50">
-        </div>
-        <div class="row">
-            <div class="row-header"><label>Bevel</label><span id="val-bev">30</span></div>
-            <input type="range" id="bev" min="1" max="50" value="30">
-        </div>
-        <div class="row">
-            <div class="row-header"><label>Chroma</label><span id="val-chr">1</span></div>
-            <input type="range" id="chr" min="0" max="20" step="0.5" value="1">
-        </div>
-        <div class="row">
-            <div class="row-header"><label>Magnify</label><span id="val-mag">0</span></div>
-            <input type="range" id="mag" min="-1" max="1" step="0.1" value="0">
-        </div>
-        <div class="row">
-            <div class="row-header"><label>Shine Op</label><span id="val-sop">0.35</span></div>
-            <input type="range" id="sop" min="0" max="1" step="0.05" value="0.35">
-        </div>
-        <div class="row">
-            <div class="row-header"><label>Shine Ang</label><span id="val-sang">160</span></div>
-            <input type="range" id="sang" min="0" max="360" value="160">
-        </div>
-        
-        <div class="chk-row">
-            <label><input type="checkbox" id="motion"> Enable Gyroscope</label>
+            <div class="coming-soon-block">
+                More components are coming soon...
+            </div>
         </div>
     </div>
 
     <script type="module">
         import LiquidBackdrop from './src/liquidbackdrop.js';
+        import './src/components/liquidtoggle.js';
         
+        // Initialize core engine and its DOM observers
         LiquidBackdrop.start();
 
+        // Simple navigation routing logic for switching between pages
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+                e.currentTarget.classList.add('active');
+                
+                const targetId = e.currentTarget.getAttribute('data-target');
+                document.querySelectorAll('.view-container').forEach(v => v.classList.remove('active'));
+                document.getElementById(targetId).classList.add('active');
+            });
+        });
+
+        // DOM element references
         const box = document.getElementById('target');
         const boxLabel = document.getElementById('box-label');
         const codeOutput = document.getElementById('code-output');
         const chkMotion = document.getElementById('motion');
         
-        let currentSat = 1.25;
+        let currentSat = 1.25; // Base saturation multiplier for effect blending
         
+        // Interaction hint tracking variables
+        let hasBeenDragged = false;
+        let isHintActive = false;
+        let originalText = 'Custom';
+        
+        // DOM bindings for input sliders
         const inputs = {
             blur: document.getElementById('blur'),
             radius: document.getElementById('radius'),
@@ -175,6 +347,8 @@
             sop: document.getElementById('sop'),
             sang: document.getElementById('sang')
         };
+        
+        // DOM bindings for slider output value labels
         const values = {
             blur: document.getElementById('val-blur'),
             radius: document.getElementById('val-radius'),
@@ -186,6 +360,7 @@
             sang: document.getElementById('val-sang')
         };
 
+        // Preset configurations mapped to buttons
         const presets = {
             'Regular': { blur: 3, ref: 25, bev: 12, chr: 0, mag: 0, sop: 0.45, sang: 160, sat: 1.2, radius: 40, bg: 'rgba(255, 255, 255, 0.05)', motion: false },
             'Clear': { blur: 1, ref: 45, bev: 20, chr: 2, mag: 0, sop: 0.35, sang: 90, sat: 1.4, radius: 40, bg: 'transparent', motion: false },
@@ -194,16 +369,25 @@
             'Lense': { blur: 2, ref: 50, bev: 50, chr: 4, mag: -1, sop: 0.45, sang: 160, sat: 1.25, radius: 90, bg: 'transparent', motion: false }
         };
 
+        // Global tool event listeners binding UI to Engine API
         document.getElementById('fallback').addEventListener('change', (e) => LiquidBackdrop.setFallback(e.target.checked));
         document.getElementById('debug').addEventListener('change', (e) => LiquidBackdrop.setDebug(e.target.checked));
-        document.getElementById('perf').addEventListener('change', (e) => LiquidBackdrop.setPerformance(e.target.checked));
+        
+        // Performance toggle that overrides CSS custom property
+        document.getElementById('perf').addEventListener('change', (e) => {
+            const quality = e.target.checked ? '0.5' : '1.0';
+            document.documentElement.style.setProperty('--lb-quality', quality);
+            LiquidBackdrop.updateAll();
+        });
 
+        // Event listener for applying pre-configured effect presets
         document.querySelectorAll('.tpl-row button').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const tplName = e.target.innerText;
                 const p = presets[tplName];
                 
                 if (p) {
+                    // Update all UI sliders to match preset values
                     inputs.blur.value = p.blur;
                     inputs.ref.value = p.ref;
                     inputs.bev.value = p.bev;
@@ -226,76 +410,135 @@
             });
         });
 
+        // Replaces box text with a animated interaction hint pointer emoji
+        function showHint() {
+            if (hasBeenDragged || isHintActive) return;
+            isHintActive = true;
+            
+            boxLabel.classList.remove('fast-fade');
+            boxLabel.classList.add('fade-out');
+            
+            setTimeout(() => {
+                if (!isHintActive) return;
+                boxLabel.innerText = '👆';
+                boxLabel.classList.add('hint-anim');
+                boxLabel.classList.remove('fade-out');
+            }, 500);
+        }
+
+        // Reverts the interaction hint to original text
+        function hideHint() {
+            if (!isHintActive) return;
+            isHintActive = false;
+            
+            boxLabel.classList.add('fast-fade');
+            boxLabel.classList.add('fade-out');
+            
+            setTimeout(() => {
+                boxLabel.classList.remove('hint-anim');
+                boxLabel.innerText = originalText;
+                boxLabel.classList.remove('fade-out');
+                
+                setTimeout(() => {
+                    boxLabel.classList.remove('fast-fade');
+                }, 100);
+            }, 100);
+        }
+
+        // Timer to show hint in case of user inactivity
+        let inactivityTimer = setTimeout(showHint, 5000);
+
+        // Core update function to parse slider values and generate CSS string for engine
         function update(source) {
             const isCustom = typeof source !== 'string';
             const label = isCustom ? 'Custom' : source;
 
+            // Sync visual UI text with actual input values
             Object.keys(inputs).forEach(k => values[k].textContent = inputs[k].value);
             
+            // Dynamically adjust border radius 
             const radVal = inputs.radius.value;
             box.style.borderRadius = radVal == 90 ? '100%' : `${radVal}px`;
             
             const motionVal = chkMotion.checked ? 1 : 0;
             let angleStr = inputs.sang.value;
             
+            // Allow CSS variables to drive angle for dynamic gyroscope interaction
             if (label === 'Interactive') {
                 angleStr = 'var(--lb-angle)';
             }
             
+            // Formatting arguments for custom procedural shine() filter
             const shineArgs = motionVal ? `${inputs.sop.value}, ${angleStr}, 1` : `${inputs.sop.value}, ${angleStr}`;
+            
+            // Final string composition for CSS custom property
+            // This string is parsed via Regex and generates SVG Displacement Map
             const val = `blur(${inputs.blur.value}px) liquid-glass(${inputs.ref.value}, ${inputs.bev.value}, ${inputs.chr.value}, ${inputs.mag.value}) shine(${shineArgs}) saturate(${currentSat})`;
             
+            // Injecting generated property to the box element
             box.style.setProperty('--liquid-backdrop', val);
             
             if (isCustom) {
-                boxLabel.innerText = 'Custom';
+                originalText = 'Custom';
                 currentSat = 1.25;
             } else {
-                boxLabel.innerText = label;
+                originalText = label;
             }
             
+            if (!isHintActive) {
+                boxLabel.innerText = originalText;
+            }
+            
+            // Update code display block
             codeOutput.innerText = `--liquid-backdrop: ${val};`;
         }
 
+        // Initial paint call
         update('Custom');
 
+        // Bind all slider inputs to update function for real-time reactivity
         Object.values(inputs).forEach(el => el.addEventListener('input', update));
         
+        // Handle global motion enable toggle
         chkMotion.addEventListener('change', (e) => {
             LiquidBackdrop.setMotion(e.target.checked);
-            if (boxLabel.innerText === 'Custom') update();
-            else update(boxLabel.innerText);
+            if (originalText === 'Custom') update();
+            else update(originalText);
         });
 
+        // Drag Logic using modern Pointer Events API
         let isDragging = false;
-        let startPos = { x: 0, y: 0 };
-        function onDown(e) {
-            if(e.target !== box && e.target.parentNode !== box) return;
+        let offset = { x: 0, y: 0 };
+
+        box.addEventListener('pointerdown', (e) => {
+            // Ignore non-left mouse clicks
+            if (e.button !== 0 && e.pointerType === 'mouse') return;
+            
             isDragging = true;
-            const cx = e.touches ? e.touches[0].clientX : e.clientX;
-            const cy = e.touches ? e.touches[0].clientY : e.clientY;
-            startPos.x = cx - box.offsetLeft;
-            startPos.y = cy - box.offsetTop;
+            hasBeenDragged = true;
+            clearTimeout(inactivityTimer);
+            hideHint();
+            
+            // setPointerCapture ensures movement events still fire if cursor leaves element visual bounds
+            box.setPointerCapture(e.pointerId);
+            offset.x = box.offsetLeft - e.clientX;
+            offset.y = box.offsetTop - e.clientY;
             box.style.cursor = 'grabbing';
-        }
-        function onMove(e) {
-            if (!isDragging) return;
+        });
+
+        box.addEventListener('pointermove', (e) => {
+            if (!isDragging || !box.hasPointerCapture(e.pointerId)) return;
             e.preventDefault();
-            const cx = e.touches ? e.touches[0].clientX : e.clientX;
-            const cy = e.touches ? e.touches[0].clientY : e.clientY;
-            box.style.left = `${cx - startPos.x}px`;
-            box.style.top = `${cy - startPos.y}px`;
-        }
-        function onUp() {
+            box.style.left = (e.clientX + offset.x) + 'px';
+            box.style.top = (e.clientY + offset.y) + 'px';
+        });
+
+        box.addEventListener('pointerup', (e) => {
             isDragging = false;
+            // Release hardware pointer capture lock upon interaction end
+            box.releasePointerCapture(e.pointerId);
             box.style.cursor = 'grab';
-        }
-        window.addEventListener('mousedown', onDown);
-        window.addEventListener('mousemove', onMove);
-        window.addEventListener('mouseup', onUp);
-        window.addEventListener('touchstart', onDown, {passive: false});
-        window.addEventListener('touchmove', onMove, {passive: false});
-        window.addEventListener('touchend', onUp);
+        });
     </script>
 </body>
 </html>
